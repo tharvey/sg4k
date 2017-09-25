@@ -573,15 +573,31 @@ static void usage(const char *cmd)
 	int i;
 
 	fprintf(stderr, "usage: %s [options]\n", cmd);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "  --debug             - verbose debugging\n");
+	fprintf(stderr, "  --monitor           - monitor for status changes\n");
+	fprintf(stderr, "  --device,-d <dev>   - specificy serial device\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Video options:\n");
+	fprintf(stderr, "  --pattern,-p <n>    - change display pattern\n");
+	fprintf(stderr, "  --timing,-t <n>     - change timing (resolution)\n");
+	fprintf(stderr, "  --colorspace,-c <n> - change colorspace\n");
+	fprintf(stderr, "  --edid,-d <edid>\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "Audio options:\n");
+	fprintf(stderr, "  --samplerate,-s <n> - change frequency\n");
+	fprintf(stderr, "  --width,-w <n>      - change width\n");
+	fprintf(stderr, "  --channels <n>      - change channels\n");
+	fprintf(stderr, "\n");
 
 	fprintf(stderr, "Timings:\n");
 	for (i = 0; i < ARRAY_SIZE(timings); i++) {
-		printf("%02d: %s\n", i, timings[i]);
+		printf("\t%02d: %s\n", i, timings[i]);
 	}
 
 	fprintf(stderr, "\nPatterns:\n");
 	for (i = 0; i < ARRAY_SIZE(patterns); i++) {
-		printf("\t% 2d: %s\n", i + 1, patterns[i]);
+		printf("\t% 2d: %s\n", i, patterns[i]);
 	}
 
 	fprintf(stderr, "\nColorspace:\n");
