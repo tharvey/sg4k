@@ -244,6 +244,7 @@ const char *enables[] = {
 	"off",
 	"on",
 };
+
 struct termios orig_ttystate;
 int debug = 0;
 
@@ -615,14 +616,24 @@ static void usage(const char *cmd)
 		printf("\t% 2d: %s\n", i, output_types[i]);
 	}
 
-	fprintf(stderr, "\nAudioSamplerate:\n");
+	fprintf(stderr, "\nAudioSamplerate: (--samplerate <n>)\n");
 	for (i = 0; i < ARRAY_SIZE(audio_samplerates); i++) {
 		printf("\t% 2d: %s\n", i, audio_samplerates[i]);
 	}
 
-	fprintf(stderr, "\nAudioWidth:\n");
+	fprintf(stderr, "\nAudioWidth: (--width <n>)\n");
 	for (i = 0; i < ARRAY_SIZE(audio_widths); i++) {
 		printf("\t% 2d: %s\n", i, audio_widths[i]);
+	}
+
+	fprintf(stderr, "\nAudioChannels: (--channels <n>)\n");
+	for (i = 0; i < ARRAY_SIZE(audio_channels); i++) {
+		printf("\t% 2d: %s\n", i, audio_channels[i]);
+	}
+
+	fprintf(stderr, "\nAudioSource: (--source <n>)\n");
+	for (i = 0; i < ARRAY_SIZE(enables); i++) {
+		printf("\t% 2d: %s\n", i, enables[i]);
 	}
 }
 
@@ -646,6 +657,7 @@ int main(int argc, char** argv)
 		{ "samplerate",	required_argument, 0, 's' },
 		{ "width",	required_argument, 0, 'w' },
 		{ "channels",	required_argument, 0, 0 },
+		{ "source",	required_argument, 0, 0 },
 		{ "monitor",	no_argument, 0, 'm' },
 		{ },
 	};
@@ -664,7 +676,7 @@ int main(int argc, char** argv)
 				debug = atoi(optarg);
 			}
 			else if (strcmp(long_opts[opt_idx].name,
-					"chanels") == 0)
+					"channels") == 0)
 			{
 				cmd = audio_channel;
 				data = atoi(optarg);
@@ -675,6 +687,19 @@ int main(int argc, char** argv)
 				}
 				printf("audio_channel: %s (%d)\n",
 				       audio_channels[data], data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"source") == 0)
+			{
+				cmd = audio_source;
+				data = atoi(optarg);
+				if (data > ARRAY_SIZE(enables)) {
+					fprintf(stderr, "invalid index: %d\n",
+						data);
+					return -2;
+				}
+				printf("audio_source: %s (%d)\n",
+				       enables[data], data);
 			}
 			break;
 
