@@ -659,6 +659,7 @@ int main(int argc, char** argv)
 		{ "channels",	required_argument, 0, 0 },
 		{ "source",	required_argument, 0, 0 },
 		{ "monitor",	no_argument, 0, 'm' },
+		{ "reset",	no_argument, 0, 'r' },
 		{ },
 	};
 
@@ -666,7 +667,7 @@ int main(int argc, char** argv)
 	while (1) {
 		int opt_idx = 0;
 
-		c = getopt_long(argc, argv, "hd:p:t:c:e:s:w:m",
+		c = getopt_long(argc, argv, "hd:p:t:c:e:s:w:mr",
 				long_opts, &opt_idx);
 		if (c == -1)
 			break;
@@ -725,6 +726,10 @@ int main(int argc, char** argv)
 
 		case 'm':
 			cmd = 0;
+			break;
+
+		case 'r':
+			cmd = reset;
 			break;
 
 		case 'p':
