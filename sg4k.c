@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <endian.h>
 #include <errno.h>
 #include <getopt.h>
 #include <stdlib.h>
@@ -38,6 +39,23 @@ struct __attribute__((__packed__)) packet {
 	u8 *data;
 };
 
+/* Table 14: 16bit values are LSB first */
+struct __attribute__((__packed__)) user_defined_timing {
+	u8 index;
+	u16 clk; /* pixel-clk/10000 (max 300M); 148.5Mhz:CLK=14850=0x02/0x3a */
+	u8  flag;
+
+	u16 hactive;
+	u16 hbank;
+	u16 hfront_porch;
+	u16 hsync_time;
+
+	u16 vactive;
+	u16 vbank;
+	u16 vfront_porch;
+	u16 vsync_time;
+};
+
 enum command {
 	timing = 0x61,
 	pattern = 0x62,
@@ -59,6 +77,7 @@ enum command {
 	reset = 0x7802,
 
 	read_native_timing = 0x80a1,
+	read_user_timing = 0x80a0,
 	read_output_status = 0x80a9,
 	read_edid = 0xb838,
 	read_hpd_status = 0xb839,
@@ -205,6 +224,7 @@ const char *deepcolors[] = {
 	"Auto",
 };
 
+/* Table 10 */
 const char *output_types[] = {
 	"DVI",
 	"HDMI",
@@ -425,9 +445,25 @@ static int parse_packet(const u8 *buf, int size)
 		break;
 	case reset:
 		break;
-	case user_timing:
-		printf("\tread user_timing: index=%d)\n", d[0]);
-		break;
+	case read_user_timing:
+	case user_timing: {
+		struct user_defined_timing *t = (struct user_defined_timing*)d;
+		printf("\t%s user_timing: index=%d)\n",
+			(key == read_user_timing) ? "read" : "set", d[0]);
+		printf("\t\tindex=%d\n", t->index);
+		printf("\t\tclk=%d\n", le16toh(t->clk) * 10000);
+		printf("\t\tflags=0x%x\n", t->flag);
+		printf("\t\thoriz=%d/%d/%d/%d\n",
+			le16toh(t->hactive),
+			le16toh(t->hbank),
+			le16toh(t->hfront_porch),
+			le16toh(t->hsync_time));
+		printf("\t\tvert=%d/%d/%d/%d\n",
+			le16toh(t->vactive),
+			le16toh(t->vbank),
+			le16toh(t->vfront_porch),
+			le16toh(t->vsync_time));
+	}	break;
 	case read_native_timing:
 		printf("\tread native_timing:\n");
 		/* TODO: table 22 */
@@ -494,7 +530,7 @@ static int parse_packet(const u8 *buf, int size)
 			audio_channels[d[0]], d[0]);
 		break;
 	case user_timing:
-		printf("\tset user_timing: index=%d)\n", d[0]);
+		printf("\tuser_timing: index=%d)\n", d[0]);
 		/* TODO Table 14 */
 		break;
 	case sink_edid:
@@ -584,6 +620,13 @@ static void usage(const char *cmd)
 	fprintf(stderr, "  --timing,-t <n>     - change timing (resolution)\n");
 	fprintf(stderr, "  --colorspace,-c <n> - change colorspace\n");
 	fprintf(stderr, "  --edid,-d <edid>\n");
+	fprintf(stderr, "  --output_type <n>   - change output type\n");
+	fprintf(stderr, "  --output <0|1>      - enable/disable output\n");
+	fprintf(stderr, "  --setuser <str>     - set user defined timing\n");
+	fprintf(stderr, "    str=<clk/10000>:<flag>:<horiz>:<vert>\n");
+	fprintf(stderr, "    horiz=<active>:<blank>:<frontporch>:<sync_time>\n");
+	fprintf(stderr, "    vert=<active>:<blank>:<frontporch>:<sync_time>\n");
+	fprintf(stderr, "  --getuser <n>       - get user defined timing <n>\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "Audio options:\n");
 	fprintf(stderr, "  --samplerate,-s <n> - change frequency\n");
@@ -611,9 +654,14 @@ static void usage(const char *cmd)
 		printf("\t% 2d: %s\n", i, deepcolors[i]);
 	}
 
-	fprintf(stderr, "\nOutput:\n");
+	fprintf(stderr, "\nOutput Type: (--output_type <n>)\n");
 	for (i = 0; i < ARRAY_SIZE(output_types); i++) {
 		printf("\t% 2d: %s\n", i, output_types[i]);
+	}
+
+	fprintf(stderr, "\nOutput: (--output <n>)\n");
+	for (i = 0; i < ARRAY_SIZE(enables); i++) {
+		printf("\t% 2d: %s\n", i, enables[i]);
 	}
 
 	fprintf(stderr, "\nAudioSamplerate: (--samplerate <n>)\n");
@@ -643,7 +691,9 @@ int main(int argc, char** argv)
 {
 	const char *dev = NULL;
 	u16 cmd = 0;
-	u8 data = 0;
+	u8 buf[20];
+	u8 data;
+	int data_sz = 0;
 	int fd;
 	int c;
 
@@ -656,8 +706,13 @@ int main(int argc, char** argv)
 		{ "edid",	required_argument, 0, 'e' },
 		{ "samplerate",	required_argument, 0, 's' },
 		{ "width",	required_argument, 0, 'w' },
+		{ "hdcp",	required_argument, 0, 0 },
 		{ "channels",	required_argument, 0, 0 },
 		{ "source",	required_argument, 0, 0 },
+		{ "setuser",	required_argument, 0, 0 },
+		{ "getuser",	required_argument, 0, 0 },
+		{ "output_type",required_argument, 0, 0 },
+		{ "output",	required_argument, 0, 0 },
 		{ "monitor",	no_argument, 0, 'm' },
 		{ "reset",	no_argument, 0, 'r' },
 		{ },
@@ -701,6 +756,102 @@ int main(int argc, char** argv)
 				}
 				printf("audio_source: %s (%d)\n",
 				       enables[data], data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"hdcp") == 0)
+			{
+				cmd = hdcp;
+				data = atoi(optarg);
+				if (data > ARRAY_SIZE(enables)) {
+					fprintf(stderr, "invalid index: %d\n",
+						data);
+					return -2;
+				}
+				printf("hdcp: %s (%d)\n",
+				       enables[data], data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"output") == 0)
+			{
+				cmd = output_power;
+				data = atoi(optarg);
+				if (data > ARRAY_SIZE(enables)) {
+					fprintf(stderr, "invalid index: %d\n",
+						data);
+					return -2;
+				}
+				printf("output_power: %s (%d)\n",
+				       enables[data], data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"output_type") == 0)
+			{
+				cmd = output_type;
+				data = atoi(optarg);
+				if (data > ARRAY_SIZE(output_types)) {
+					fprintf(stderr, "invalid index: %d\n",
+						data);
+					return -2;
+				}
+				printf("output_type: %s (%d)\n",
+				       output_types[data], data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"getuser") == 0)
+			{
+				cmd = read_user_timing,
+				data = atoi(optarg);
+				if (data > 10) {
+					fprintf(stderr, "invalid index: %d\n",
+						data);
+					return -2;
+				}
+				printf("get user: %d\n", data);
+			}
+			else if (strcmp(long_opts[opt_idx].name,
+					"setuser") == 0)
+			{
+				struct user_defined_timing *t =
+					(struct user_defined_timing *)buf;
+				char *p = strtok(optarg, ":");
+				memset(buf, 0, sizeof(buf));
+				for (c = 0; p; c++) {
+					switch (c) {
+					case 0:
+						t->index = atoi(p);
+						break;
+					case 1:
+						t->clk = htole16(atoi(p)/10000);
+						break;
+					case 2:
+						t->flag = atoi(p);
+						break;
+					case 3:
+						t->hactive = htole16(atoi(p));
+						break;
+					case 4:
+						t->hbank = htole16(atoi(p));
+						break;
+					case 5:
+						t->hfront_porch = htole16(atoi(p));
+						break;
+					case 6:
+						t->hsync_time = htole16(atoi(p));
+						break;
+					case 7:
+						t->vbank = htole16(atoi(p));
+						break;
+					case 8:
+						t->vfront_porch = htole16(atoi(p));
+						break;
+					case 9:
+						t->vsync_time = htole16(atoi(p));
+						break;
+					}
+					p = strtok(NULL, ":");
+				}
+				cmd = user_timing,
+				data_sz = sizeof(*t);
 			}
 			break;
 
@@ -800,7 +951,10 @@ int main(int argc, char** argv)
 
 	/* send command */
 	if (cmd) {
-		send_command(fd, cmd, &data, 1);
+		if (data_sz)
+			send_command(fd, cmd, buf, data_sz);
+		else
+			send_command(fd, cmd, &data, 1);
 		/* wait for response */
 		DPRINTF("waiting for response...\n");
 		read_response(fd);
